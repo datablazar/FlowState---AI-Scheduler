@@ -1,5 +1,5 @@
 
-import { Task, TaskStatus, Priority, UserSettings } from '../types';
+import { Task, TaskStatus, Priority, UserSettings, EnergyLevel } from '../types';
 import { 
   addMinutes, isBefore, isAfter, setHours, setMinutes, 
   areIntervalsOverlapping, startOfDay, addDays, 
@@ -29,6 +29,24 @@ const floorTo15 = (date: Date): Date => {
     const m = date.getMinutes();
     const rem = m % 15;
     return setSeconds(setMilliseconds(subMinutes(date, rem), 0), 0);
+};
+
+const getEnergyScore = (energy: EnergyLevel | undefined, start: Date): number => {
+    if (!energy) return 1;
+    const hour = start.getHours() + start.getMinutes() / 60;
+    if (energy === 'high') {
+        if (hour < 11) return 3;
+        if (hour < 15) return 2;
+        return 1;
+    }
+    if (energy === 'medium') {
+        if (hour >= 10 && hour < 16) return 3;
+        if (hour >= 8 && hour < 18) return 2;
+        return 1;
+    }
+    if (hour >= 15) return 3;
+    if (hour >= 12) return 2;
+    return 1;
 };
 
 /**
@@ -226,6 +244,7 @@ export const suggestSchedule = async (
       const pMap = { [Priority.HIGH]: 3, [Priority.MEDIUM]: 2, [Priority.LOW]: 1 };
       let score = pMap[t.priority] * 100;
       if (t.deadline) score += 50; 
+      if (t.latestEnd) score += 60;
       return score;
   };
 
@@ -263,13 +282,57 @@ export const suggestSchedule = async (
               }
           });
       }
+      if (task.earliestStart) {
+          const earliest = new Date(task.earliestStart);
+          if (isAfter(earliest, dependencyConstraint)) {
+              dependencyConstraint = earliest;
+          }
+      }
+
+      const latestConstraint = task.latestEnd ? new Date(task.latestEnd) : null;
+
+      let startSlotIndex = 0;
+      if (task.energy) {
+          let bestIndex = -1;
+          let bestScore = -1;
+          let bestStart: Date | null = null;
+
+          for (let i = 0; i < finalWorkSlots.length; i++) {
+              const slot = finalWorkSlots[i];
+              if (slot.duration < 15) continue;
+
+              let usableStart = slot.start;
+              if (isBefore(usableStart, dependencyConstraint)) {
+                  usableStart = ceilTo15(dependencyConstraint);
+              }
+
+              if (latestConstraint && isBefore(latestConstraint, usableStart)) continue;
+
+              const slotEnd = latestConstraint && isBefore(latestConstraint, slot.end) ? latestConstraint : slot.end;
+              if (isAfter(usableStart, slotEnd) || isEqual(usableStart, slotEnd)) continue;
+
+              const availableInSlot = differenceInMinutes(slotEnd, usableStart);
+              if (availableInSlot < 15) continue;
+
+              const score = getEnergyScore(task.energy, usableStart);
+              if (score > bestScore || (score === bestScore && (!bestStart || isBefore(usableStart, bestStart)))) {
+                  bestIndex = i;
+                  bestScore = score;
+                  bestStart = usableStart;
+              }
+          }
+
+          if (bestIndex >= 0) {
+              startSlotIndex = bestIndex;
+          }
+      }
 
       let remainingDuration = task.durationMinutes;
       let taskParts: Task[] = [];
       let slotsToRemove: number[] = [];
       let scheduledEndTime: Date | null = null;
 
-      for (let i = 0; i < finalWorkSlots.length; i++) {
+      for (let i = startSlotIndex; i < finalWorkSlots.length; i++) {
           const slot = finalWorkSlots[i];
           if (slot.duration < 15) continue; 
 
@@ -278,14 +341,23 @@ export const suggestSchedule = async (
               usableStart = ceilTo15(dependencyConstraint); 
           }
 
-          if (isAfter(usableStart, slot.end) || isEqual(usableStart, slot.end)) continue;
+          if (latestConstraint && isBefore(latestConstraint, usableStart)) continue;
 
-          const availableInSlot = differenceInMinutes(slot.end, usableStart);
+          const slotEnd = latestConstraint && isBefore(latestConstraint, slot.end) ? latestConstraint : slot.end;
+          if (isAfter(usableStart, slotEnd) || isEqual(usableStart, slotEnd)) continue;
+
+          const availableInSlot = differenceInMinutes(slotEnd, usableStart);
           if (availableInSlot < 15) continue;
 
           const fit = Math.min(availableInSlot, remainingDuration);
           const partStart = usableStart;
           const partEnd = addMinutes(usableStart, fit);
+
+          const baseReason = settings.enableChunking 
+              ? `Optimized for ${settings.workChunkMinutes}m flow.` 
+              : `Scheduled based on priority.`;
+          const energyReason = task.energy ? ` Energy ${task.energy}.` : '';
+          const windowReason = task.earliestStart || task.latestEnd ? ` Window applied.` : '';
 
           taskParts.push({
               ...task,
@@ -298,9 +370,7 @@ export const suggestSchedule = async (
               durationMinutes: fit,
               scheduledStart: partStart.toISOString(),
               scheduledEnd: partEnd.toISOString(),
-              schedulingReason: settings.enableChunking 
-                 ? `Optimized for ${settings.workChunkMinutes}m flow.` 
-                 : `Scheduled based on priority.`
+              schedulingReason: `${baseReason}${energyReason}${windowReason}`
           });
 
           remainingDuration -= fit;

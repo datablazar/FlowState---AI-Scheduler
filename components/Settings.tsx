@@ -1,17 +1,20 @@
 
 import React from 'react';
-import { UserSettings } from '../types';
-import { Clock, Check, Settings as SettingsIcon, Timer, Coffee, Zap, Info, BatteryCharging, BrainCircuit, RefreshCw, LayoutTemplate, Download, Trash2, Save } from 'lucide-react';
+import { Project, UserSettings } from '../types';
+import { Clock, Check, Settings as SettingsIcon, Timer, Coffee, Zap, BatteryCharging, BrainCircuit, RefreshCw, Download, Trash2, Save, Layers, Pencil, Plus } from 'lucide-react';
 
 interface SettingsProps {
   settings: UserSettings;
   onUpdate: (settings: UserSettings) => void;
+  projects: Project[];
+  onEditProject: (project: Project) => void;
+  onCreateProject: () => void;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
+const Settings: React.FC<SettingsProps> = ({ settings, onUpdate, projects, onEditProject, onCreateProject }) => {
   
   const handleDayToggle = (dayIndex: number) => {
     const newDays = settings.workDays.includes(dayIndex)
@@ -203,6 +206,47 @@ const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
 
             {/* Right Column */}
             <div className="space-y-8">
+                {/* Projects Section */}
+                <section className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-brand-400" />
+                            <h3 className="text-sm font-bold text-motion-muted uppercase tracking-wider">Projects</h3>
+                        </div>
+                        <button
+                            onClick={onCreateProject}
+                            className="flex items-center gap-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-500 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                            <Plus className="w-3 h-3" /> New Project
+                        </button>
+                    </div>
+                    <div className="bg-motion-card border border-motion-border rounded-2xl p-4 shadow-sm space-y-3">
+                        {projects.map(project => (
+                            <div key={project.id} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-3 py-3">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: project.color }}></span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-semibold text-white truncate">{project.name}</div>
+                                    <div className="text-[10px] text-motion-muted">
+                                        Velocity {project.velocity.toFixed(2)}x
+                                        {project.defaultTaskDuration ? ` / ${project.defaultTaskDuration}m default` : ''}
+                                        {project.weeklyCapacityHours ? ` / ${project.weeklyCapacityHours}h week` : ''}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => onEditProject(project)}
+                                    className="p-2 rounded-lg text-motion-muted hover:text-white hover:bg-white/10 transition-colors"
+                                    title="Edit project"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                        {projects.length === 0 && (
+                            <div className="text-center text-xs text-motion-muted py-4">No projects yet.</div>
+                        )}
+                    </div>
+                </section>
+
                 {/* Chunking / Pomodoro Redesign */}
                 <section className="space-y-4">
                     <div className="flex items-center justify-between mb-2">

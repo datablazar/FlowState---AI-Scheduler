@@ -12,6 +12,8 @@ import {
   isSameDay, 
   isToday, 
   isSameMonth,
+  isAfter,
+  isBefore,
   setHours,
   setMinutes,
   areIntervalsOverlapping
@@ -152,6 +154,8 @@ const EventBlock = React.memo(({
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     const isHighPriority = task.priority === Priority.HIGH;
     const isShort = durationMinutes <= 25;
+    const violatesWindow = (!!task.earliestStart && isBefore(start, new Date(task.earliestStart))) ||
+      (!!task.latestEnd && isAfter(end, new Date(task.latestEnd)));
     
     const handleResizeStart = (e: React.MouseEvent) => {
       if (blocked || !onTaskResize) return;
@@ -210,9 +214,10 @@ const EventBlock = React.memo(({
       >
         <div className={`flex items-center gap-1.5 relative z-10 min-w-0 ${isShort ? '' : 'mb-0.5'}`}>
              {task.schedulingReason && !task.isFixed && <Sparkles className="w-3 h-3 text-brand-400 shrink-0 animate-pulse" />}
-             {task.isFixed && <span className="text-[10px] opacity-70">🔒</span>}
+             {task.isFixed && <span className="text-[10px] font-semibold opacity-70">Fixed</span>}
              {blocked && <Lock className="w-3 h-3 text-red-300" />}
              {isHighPriority && !blocked && <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />}
+             {violatesWindow && <AlertTriangle className="w-3 h-3 text-yellow-300" title="Outside time window" />}
              
              <span className={`font-semibold truncate text-[11px] leading-tight ${isHighPriority ? 'text-white' : 'text-white/90'}`}>
                 {task.title}

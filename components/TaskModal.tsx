@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Clock, Calendar as CalendarIcon, Flag, Link as LinkIcon, Layers, AlertTriangle, Sparkles, CheckCircle2, ListTodo, Plus, Trash2, Repeat } from 'lucide-react';
-import { Task, Project, Priority, TaskStatus, Subtask, RecurrenceType } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Clock, Calendar as CalendarIcon, Flag, Link as LinkIcon, Layers, AlertTriangle, Sparkles, CheckCircle2, ListTodo, Plus, Trash2, Repeat, Zap } from 'lucide-react';
+import { Task, Project, Priority, TaskStatus, Subtask, RecurrenceType, EnergyLevel } from '../types';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -10,6 +10,24 @@ interface TaskModalProps {
   projects: Project[];
   allTasks: Task[]; // For dependencies
 }
+
+const toLocalDateTimeInput = (iso?: string) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
+const fromLocalDateTimeInput = (value: string) => {
+  if (!value) return undefined;
+  return new Date(value).toISOString();
+};
+
+const ENERGY_OPTIONS: Array<{ value: EnergyLevel; label: string; accent: string }> = [
+  { value: 'low', label: 'Low', accent: 'text-emerald-300' },
+  { value: 'medium', label: 'Medium', accent: 'text-sky-300' },
+  { value: 'high', label: 'High', accent: 'text-rose-300' }
+];
 
 const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, projects, allTasks }) => {
   const [title, setTitle] = useState('');
@@ -24,6 +42,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [recurrence, setRecurrence] = useState<RecurrenceType>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [energy, setEnergy] = useState<EnergyLevel>('medium');
+  const [earliestStart, setEarliestStart] = useState('');
+  const [latestEnd, setLatestEnd] = useState('');
+  const [dependencySearch, setDependencySearch] = useState('');
   
   const blockingTasks = dependencies
     .map(depId => allTasks.find(t => t.id === depId))
@@ -32,34 +56,50 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
   const isBlocked = blockingTasks.length > 0;
 
   useEffect(() => {
-    if (isOpen) {
-      if (task) {
-        setTitle(task.title);
-        setDescription(task.description || '');
-        setDuration(task.durationMinutes);
-        setPriority(task.priority);
-        setProjectId(task.projectId || projects[0]?.id || '');
-        setDeadline(task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : '');
-        setDependencies(task.dependencies || []);
-        setActualDuration(task.actualDurationMinutes);
-        setStatus(task.status);
-        setSubtasks(task.subtasks || []);
-        setRecurrence(task.recurrence || null);
-      } else {
-        setTitle('');
-        setDescription('');
-        setDuration(30);
-        setPriority(Priority.MEDIUM);
-        setProjectId(projects[0]?.id || '');
-        setDeadline('');
-        setDependencies([]);
-        setActualDuration(undefined);
-        setStatus(TaskStatus.TODO);
-        setSubtasks([]);
-        setRecurrence(null);
-      }
-      setNewSubtaskTitle('');
+    if (!isOpen) return;
+
+    const isEditing = !!task?.id;
+    const resolvedProjectId = task?.projectId || projects[0]?.id || '';
+    const projectDefaults = projects.find(p => p.id === resolvedProjectId);
+    const defaultDuration = projectDefaults?.defaultTaskDuration ?? 30;
+    const defaultPriority = projectDefaults?.defaultPriority ?? Priority.MEDIUM;
+
+    if (task && isEditing) {
+      setTitle(task.title || '');
+      setDescription(task.description || '');
+      setDuration(task.durationMinutes || defaultDuration);
+      setPriority(task.priority || defaultPriority);
+      setProjectId(resolvedProjectId);
+      setDeadline(task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : '');
+      setDependencies(task.dependencies || []);
+      setActualDuration(task.actualDurationMinutes);
+      setStatus(task.status);
+      setSubtasks(task.subtasks || []);
+      setRecurrence(task.recurrence || null);
+      setTags(task.tags || []);
+      setEnergy(task.energy || 'medium');
+      setEarliestStart(toLocalDateTimeInput(task.earliestStart));
+      setLatestEnd(toLocalDateTimeInput(task.latestEnd));
+    } else {
+      setTitle(task?.title || '');
+      setDescription(task?.description || '');
+      setDuration(task?.durationMinutes || defaultDuration);
+      setPriority((task?.priority as Priority | undefined) || defaultPriority);
+      setProjectId(resolvedProjectId);
+      setDeadline(task?.deadline ? new Date(task.deadline).toISOString().split('T')[0] : '');
+      setDependencies(task?.dependencies || []);
+      setActualDuration(task?.actualDurationMinutes);
+      setStatus(task?.status || TaskStatus.TODO);
+      setSubtasks(task?.subtasks || []);
+      setRecurrence(task?.recurrence || null);
+      setTags(task?.tags || []);
+      setEnergy(task?.energy || 'medium');
+      setEarliestStart(toLocalDateTimeInput(task?.earliestStart));
+      setLatestEnd(toLocalDateTimeInput(task?.latestEnd));
     }
+    setNewSubtaskTitle('');
+    setTagInput('');
+    setDependencySearch('');
   }, [isOpen, task, projects]);
 
   if (!isOpen) return null;
@@ -70,6 +110,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
 
     // Final safety check: round duration to nearest 15
     const safeDuration = Math.max(15, Math.round(duration / 15) * 15);
+
+    const earliestIso = fromLocalDateTimeInput(earliestStart);
+    const latestIso = fromLocalDateTimeInput(latestEnd);
+    const earliestDate = earliestIso ? new Date(earliestIso) : undefined;
+    const latestDate = latestIso ? new Date(latestIso) : undefined;
+    const safeLatest = earliestDate && latestDate && earliestDate > latestDate ? undefined : latestIso;
 
     const updatedTask: Task = {
       id: task?.id || Date.now().toString(),
@@ -87,7 +133,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
       actualDurationMinutes: actualDuration,
       schedulingReason: task?.schedulingReason,
       subtasks,
-      recurrence
+      recurrence,
+      tags,
+      energy,
+      earliestStart: earliestIso,
+      latestEnd: safeLatest
     };
 
     onSave(updatedTask);
@@ -116,6 +166,29 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
   const deleteSubtask = (id: string) => {
     setSubtasks(prev => prev.filter(s => s.id !== id));
   };
+
+  const availableDependencies = useMemo(() => {
+    return allTasks.filter(t => t.id !== task?.id);
+  }, [allTasks, task]);
+
+  const filteredDependencies = useMemo(() => {
+    if (!dependencySearch.trim()) return availableDependencies;
+    const q = dependencySearch.toLowerCase();
+    return availableDependencies.filter(dep =>
+      dep.title.toLowerCase().includes(q) || dep.description?.toLowerCase().includes(q)
+    );
+  }, [availableDependencies, dependencySearch]);
+
+  const handleTagCommit = () => {
+    const cleaned = tagInput.trim().replace(/^#/, '').toLowerCase();
+    if (!cleaned) return;
+    if (!tags.includes(cleaned)) {
+      setTags(prev => [...prev, cleaned]);
+    }
+    setTagInput('');
+  };
+
+  const timeWindowInvalid = earliestStart && latestEnd && new Date(earliestStart) > new Date(latestEnd);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -190,6 +263,26 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
               </div>
             </div>
 
+            {/* Actual Duration */}
+            <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
+                <Clock className="w-3 h-3" /> Actual Time
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                    type="number"
+                    min="0"
+                    step="5"
+                    value={actualDuration ?? ''}
+                    onChange={(e) => setActualDuration(e.target.value === '' ? undefined : parseInt(e.target.value, 10))}
+                    className="w-16 bg-transparent text-sm text-white focus:outline-none font-mono font-medium"
+                    placeholder="--"
+                />
+                <span className="text-sm text-motion-muted">min</span>
+              </div>
+              <p className="text-[10px] text-motion-muted mt-2">Manual entry helps calibration.</p>
+            </div>
+
             {/* Project */}
             <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
               <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
@@ -227,7 +320,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
             </div>
 
              {/* Recurrence */}
-             <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
+            <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
               <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
                 <Repeat className="w-3 h-3" /> Recurrence
               </label>
@@ -241,6 +334,155 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, pr
                  <option value="weekly" className="bg-motion-card">Weekly</option>
                  <option value="monthly" className="bg-motion-card">Monthly</option>
               </select>
+            </div>
+
+            <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
+                <CalendarIcon className="w-3 h-3" /> Deadline
+              </label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full bg-transparent text-sm text-white focus:outline-none border border-white/10 rounded-lg px-2 py-1.5"
+              />
+            </div>
+          </div>
+
+          {/* Energy & Time Window */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-3">
+                <Zap className="w-3 h-3" /> Energy Level
+              </label>
+              <div className="flex items-center gap-2">
+                {ENERGY_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setEnergy(option.value)}
+                    className={`px-3 py-1 text-[11px] font-semibold rounded-lg border transition-all ${energy === option.value ? 'bg-white/10 border-white/20 text-white' : 'border-white/10 text-motion-muted hover:text-white'}`}
+                  >
+                    <span className={option.accent}>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="group bg-white/5 hover:bg-white/10 p-3 rounded-xl border border-white/5 transition-colors">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
+                <CalendarIcon className="w-3 h-3" /> Time Window
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <div className="text-[10px] text-motion-muted mb-1">Earliest start</div>
+                  <input
+                    type="datetime-local"
+                    value={earliestStart}
+                    onChange={(e) => setEarliestStart(e.target.value)}
+                    className="w-full bg-transparent text-xs text-white focus:outline-none border border-white/10 rounded-lg px-2 py-1.5"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] text-motion-muted mb-1">Latest end</div>
+                  <input
+                    type="datetime-local"
+                    value={latestEnd}
+                    onChange={(e) => setLatestEnd(e.target.value)}
+                    className="w-full bg-transparent text-xs text-white focus:outline-none border border-white/10 rounded-lg px-2 py-1.5"
+                  />
+                </div>
+              </div>
+              {timeWindowInvalid && (
+                <p className="text-[10px] text-red-300 mt-2">Earliest start must be before latest end.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
+              Tags
+            </label>
+            <div className="bg-white/5 border border-white/5 rounded-xl p-3 space-y-2">
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {tags.map(tag => (
+                    <span key={tag} className="flex items-center gap-1 bg-white/10 text-xs text-white px-2 py-0.5 rounded-full border border-white/10">
+                      #{tag}
+                      <button
+                        type="button"
+                        onClick={() => setTags(prev => prev.filter(t => t !== tag))}
+                        className="text-motion-muted hover:text-white"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      handleTagCommit();
+                    }
+                  }}
+                  placeholder="Add tag and press Enter"
+                  className="flex-1 bg-transparent text-xs text-white focus:outline-none border border-white/10 rounded-lg px-2 py-1.5"
+                />
+                <button
+                  type="button"
+                  onClick={handleTagCommit}
+                  className="px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Dependencies */}
+          <div>
+            <label className="flex items-center gap-2 text-[10px] font-bold text-motion-muted uppercase tracking-wider mb-2">
+              <LinkIcon className="w-3 h-3" /> Dependencies
+            </label>
+            <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden">
+              <div className="p-2 border-b border-white/5">
+                <input
+                  type="text"
+                  value={dependencySearch}
+                  onChange={(e) => setDependencySearch(e.target.value)}
+                  placeholder="Search tasks to link..."
+                  className="w-full bg-transparent text-xs text-white focus:outline-none border border-white/10 rounded-lg px-2 py-1.5"
+                />
+              </div>
+              <div className="max-h-40 overflow-y-auto custom-scrollbar">
+                {filteredDependencies.length === 0 && (
+                  <div className="px-3 py-4 text-[11px] text-motion-muted">No tasks match this search.</div>
+                )}
+                {filteredDependencies.map(dep => (
+                  <label
+                    key={dep.id}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={dependencies.includes(dep.id)}
+                      onChange={() => toggleDependency(dep.id)}
+                      className="rounded-sm border-white/20 bg-white/5 text-brand-500 focus:ring-0 w-4 h-4"
+                    />
+                    <span className="truncate">{dep.title}</span>
+                    {dep.status === TaskStatus.DONE && (
+                      <span className="ml-auto text-[10px] text-green-300">Done</span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
             

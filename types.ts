@@ -12,6 +12,7 @@ export enum TaskStatus {
 }
 
 export type EnergyProfile = 'morning_lark' | 'night_owl' | 'afternoon_power';
+export type EnergyLevel = 'low' | 'medium' | 'high';
 
 export interface UserSettings {
   workStartHour: number; // 0-23
@@ -61,6 +62,10 @@ export interface Task {
   dependencies?: string[]; // Array of Task IDs that must be completed before this one
   actualDurationMinutes?: number; // For tracking learning velocity
   schedulingReason?: string; // AI explanation for why this time was chosen
+  tags?: string[];
+  energy?: EnergyLevel;
+  earliestStart?: string; // ISO Date string
+  latestEnd?: string; // ISO Date string
   
   // New for Split Tasks
   originalTaskId?: string; // If this is a split part of a larger task
@@ -82,6 +87,10 @@ export interface Project {
   name: string;
   color: string;
   velocity: number; // 1.0 = standard speed, 0.8 = slower (needs more time), 1.2 = faster
+  defaultTaskDuration?: number;
+  defaultPriority?: Priority;
+  weeklyCapacityHours?: number;
+  icon?: string;
 }
 
 export type ViewMode = 'dashboard' | 'calendar' | 'kanban' | 'analytics' | 'settings' | 'notes' | 'capture';

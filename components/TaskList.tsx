@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
-import { Task, TaskStatus, Priority, Project } from '../types';
-import { Check, Clock, Lock, Flag, Trash2, Repeat, GripVertical, Copy, Search, X } from 'lucide-react';
+import { Task, TaskStatus, Priority, Project, EnergyLevel } from '../types';
+import { Check, Clock, Lock, Flag, Trash2, Repeat, GripVertical, Copy, Search, X, CalendarClock, Zap } from 'lucide-react';
 import { isTaskBlocked, getProjectColor, sortTasksForList } from '../utils/helpers';
 import { format } from 'date-fns';
 
@@ -13,6 +13,12 @@ interface TaskListProps {
   onEdit: (task: Task) => void;
   onDuplicate?: (task: Task) => void;
 }
+
+const ENERGY_STYLES: Record<EnergyLevel, { label: string; className: string }> = {
+  low: { label: 'Low', className: 'text-emerald-300' },
+  medium: { label: 'Medium', className: 'text-sky-300' },
+  high: { label: 'High', className: 'text-rose-300' }
+};
 
 // Extracted and Memoized Task Item to prevent full list re-render
 const TaskItem = React.memo(({ 
@@ -40,6 +46,11 @@ const TaskItem = React.memo(({
     onEdit: (task: Task) => void;
     onDuplicate?: (task: Task) => void;
 }) => {
+    const energyStyle = task.energy ? ENERGY_STYLES[task.energy] : null;
+    const windowLabel = task.earliestStart || task.latestEnd
+      ? `${task.earliestStart ? format(new Date(task.earliestStart), 'MMM d, h:mm a') : 'Any'} - ${task.latestEnd ? format(new Date(task.latestEnd), 'MMM d, h:mm a') : 'Any'}`
+      : '';
+
     return (
         <div
           draggable={!blocked && !isScheduled}
@@ -122,8 +133,36 @@ const TaskItem = React.memo(({
                             <Repeat className="w-3 h-3" /> {task.recurrence === 'daily' ? 'Daily' : task.recurrence === 'weekly' ? 'Weekly' : 'Monthly'}
                         </span>
                     )}
+                    {energyStyle && (
+                        <span className={`flex items-center gap-1 font-medium ${energyStyle.className}`}>
+                            <Zap className="w-3 h-3" /> {energyStyle.label}
+                        </span>
+                    )}
+                    {task.deadline && (
+                        <span className="flex items-center gap-1 text-amber-300 font-medium">
+                            <CalendarClock className="w-3 h-3" /> Due {format(new Date(task.deadline), 'MMM d')}
+                        </span>
+                    )}
+                    {windowLabel && (
+                        <span className="flex items-center gap-1 text-cyan-300 font-medium" title={windowLabel}>
+                            <CalendarClock className="w-3 h-3" /> Window
+                        </span>
+                    )}
                 </div>
               </div>
+
+              {task.tags && task.tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {task.tags.slice(0, 4).map(tag => (
+                    <span key={tag} className="text-[10px] text-white/80 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                      #{tag}
+                    </span>
+                  ))}
+                  {task.tags.length > 4 && (
+                    <span className="text-[10px] text-motion-muted">+{task.tags.length - 4}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Hover Actions */}
@@ -164,6 +203,20 @@ const TaskItem = React.memo(({
 const TaskList: React.FC<TaskListProps> = ({ tasks, projects, onToggleStatus, onDelete, onEdit, onDuplicate }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'todo' | 'done'>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Priority>('all');
+  const [energyFilter, setEnergyFilter] = useState<'all' | EnergyLevel>('all');
+  const [tagFilter, setTagFilter] = useState<string>('all');
+
+  const projectMap = useMemo(() => {
+      return new Map(projects.map(project => [project.id, project]));
+  }, [projects]);
+
+  const tagOptions = useMemo(() => {
+      const tags = new Set<string>();
+      tasks.forEach(task => task.tags?.forEach(tag => tags.add(tag)));
+      return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [tasks]);
   
   const filteredTasks = useMemo(() => {
       let filtered = tasks;
@@ -175,14 +228,34 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, projects, onToggleStatus, on
           filtered = filtered.filter(t => t.status === TaskStatus.DONE);
       }
 
+      if (projectFilter !== 'all') {
+          filtered = filtered.filter(t => projectFilter === 'none' ? !t.projectId : t.projectId === projectFilter);
+      }
+
+      if (priorityFilter !== 'all') {
+          filtered = filtered.filter(t => t.priority === priorityFilter);
+      }
+
+      if (energyFilter !== 'all') {
+          filtered = filtered.filter(t => t.energy === energyFilter);
+      }
+
+      if (tagFilter !== 'all') {
+          filtered = filtered.filter(t => t.tags?.includes(tagFilter));
+      }
+
       // Search
       if (search.trim()) {
           const q = search.toLowerCase();
-          filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+          filtered = filtered.filter(t => 
+              t.title.toLowerCase().includes(q) ||
+              t.description?.toLowerCase().includes(q) ||
+              t.tags?.some(tag => tag.toLowerCase().includes(q))
+          );
       }
 
       return sortTasksForList(filtered, tasks);
-  }, [tasks, search, statusFilter]);
+  }, [tasks, search, statusFilter, projectFilter, priorityFilter, energyFilter, tagFilter]);
 
   return (
     <div className="flex flex-col h-full">
@@ -218,6 +291,59 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, projects, onToggleStatus, on
              </div>
              <span className="text-[10px] text-motion-muted font-mono">{filteredTasks.length} tasks</span>
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-white focus:outline-none"
+              >
+                <option value="all" className="bg-motion-card">All Projects</option>
+                <option value="none" className="bg-motion-card">Unassigned</option>
+                {projects.map(project => (
+                  <option key={project.id} value={project.id} className="bg-motion-card">
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value as 'all' | Priority)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-white focus:outline-none"
+              >
+                <option value="all" className="bg-motion-card">All Priorities</option>
+                {Object.values(Priority).map(level => (
+                  <option key={level} value={level} className="bg-motion-card">
+                    {level}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={energyFilter}
+                onChange={(e) => setEnergyFilter(e.target.value as 'all' | EnergyLevel)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-white focus:outline-none"
+              >
+                <option value="all" className="bg-motion-card">All Energy</option>
+                <option value="low" className="bg-motion-card">Low Energy</option>
+                <option value="medium" className="bg-motion-card">Medium Energy</option>
+                <option value="high" className="bg-motion-card">High Energy</option>
+              </select>
+
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-white focus:outline-none"
+              >
+                <option value="all" className="bg-motion-card">All Tags</option>
+                {tagOptions.map(tag => (
+                  <option key={tag} value={tag} className="bg-motion-card">
+                    #{tag}
+                  </option>
+                ))}
+              </select>
+          </div>
       </div>
       
       <div className="flex-1 overflow-y-auto pr-1 space-y-3 custom-scrollbar pb-8">
@@ -232,7 +358,7 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, projects, onToggleStatus, on
         {filteredTasks.map((task) => {
           const blocked = isTaskBlocked(task, tasks) && task.status !== TaskStatus.DONE;
           const pColor = getProjectColor(projects, task.projectId);
-          const pName = projects.find(p => p.id === task.projectId)?.name || 'Inbox';
+          const pName = projectMap.get(task.projectId || '')?.name || 'Inbox';
           const isScheduled = !!task.scheduledStart;
           
           const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0;

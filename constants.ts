@@ -1,9 +1,9 @@
 import { Priority, Project, Task, TaskStatus } from './types';
 
 export const INITIAL_PROJECTS: Project[] = [
-  { id: 'p1', name: 'SK190 Human Biology', color: '#3b82f6', velocity: 1.0 }, 
-  { id: 'p2', name: 'Work', color: '#10b981', velocity: 1.0 },       
-  { id: 'p3', name: 'Personal', color: '#f59e0b', velocity: 1.0 },   
+  { id: 'p1', name: 'SK190 Human Biology', color: '#3b82f6', velocity: 1.0, defaultTaskDuration: 60, defaultPriority: Priority.MEDIUM, weeklyCapacityHours: 10 }, 
+  { id: 'p2', name: 'Work', color: '#10b981', velocity: 1.0, defaultTaskDuration: 45, defaultPriority: Priority.HIGH, weeklyCapacityHours: 15 },       
+  { id: 'p3', name: 'Personal', color: '#f59e0b', velocity: 1.0, defaultTaskDuration: 30, defaultPriority: Priority.LOW, weeklyCapacityHours: 6 },   
 ];
 
 export const INITIAL_TASKS: Task[] = [

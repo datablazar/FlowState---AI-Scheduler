@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, PieChart, Zap, Plus, RefreshCw, 
-  ChevronLeft, ChevronRight, ChevronDown, UploadCloud, AlertTriangle, 
+  ChevronLeft, ChevronRight, UploadCloud, AlertTriangle, 
   LayoutGrid, Settings as SettingsIcon, Play, Layers, FileText, Home, Columns, BrainCircuit
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
@@ -23,6 +23,7 @@ import CommandPalette from './components/CommandPalette';
 import ToastContainer from './components/ToastContainer';
 import MorningBriefing from './components/MorningBriefing';
 import { useAppLogic } from './hooks/useAppLogic';
+import { ViewMode } from './types';
 
 export default function App() {
   const {
@@ -38,6 +39,7 @@ export default function App() {
       isTaskModalOpen, setIsTaskModalOpen,
       editingTask, 
       isProjectModalOpen, setIsProjectModalOpen,
+      editingProject,
       isCourseImportOpen, setIsCourseImportOpen,
       isFocusModeOpen, setIsFocusModeOpen,
       isMorningBriefingOpen, setIsMorningBriefingOpen,
@@ -45,10 +47,11 @@ export default function App() {
       isCmdPaletteOpen, setIsCmdPaletteOpen,
       
       handleAddTask, handleImportTasks, handleSaveTask,
-      handleDeleteTask, handleToggleStatus, handleAddProject,
+      handleDeleteTask, handleToggleStatus, handleAddProject, handleUpdateProject,
       handleOpenEditTask, handleOpenNewTask, handleTaskMove, handleTaskResize, 
       handleDuplicateTask, handleResolveConflicts, handleTaskMoveStatus, awardXP,
-      handleAutoSchedule, navigateDate, handleOpenFocusMode, handleStartTask
+      handleAutoSchedule, navigateDate, handleOpenFocusMode, handleStartTask,
+      handleOpenEditProject, handleOpenNewProject, handleApplySuggestedVelocity
   } = useAppLogic();
 
   // Global Keyboard Shortcuts
@@ -71,82 +74,116 @@ export default function App() {
     return format(start, 'MMMM yyyy');
   };
 
+  const viewDetails: Record<ViewMode, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
+      dashboard: { title: 'Dashboard', subtitle: 'Your performance at a glance', icon: LayoutGrid },
+      capture: { title: 'Capture', subtitle: 'Collect ideas and shape plans', icon: BrainCircuit },
+      calendar: { title: 'Planner', subtitle: 'Schedule and focus timeline', icon: CalendarIcon },
+      kanban: { title: 'Kanban', subtitle: 'Move tasks across stages', icon: Columns },
+      analytics: { title: 'Insights', subtitle: 'Trends, pacing, and constraints', icon: PieChart },
+      notes: { title: 'Notes', subtitle: 'Quick thoughts and loose ideas', icon: FileText },
+      settings: { title: 'Settings', subtitle: 'Tune your workflow', icon: SettingsIcon },
+  };
+
+  const activeView = viewDetails[mainView];
+  const ActiveViewIcon = activeView.icon;
+
   return (
-    <div className="flex h-screen bg-motion-bg overflow-hidden text-motion-text font-sans">
-      
-      {/* Sidebar - Slim Rail */}
-      <aside className="w-[72px] bg-motion-panel border-r border-motion-border flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0">
-        <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-glow mb-4">
-            <Zap className="w-5 h-5 text-white fill-white" />
-        </div>
-        
-        <nav className="flex-1 flex flex-col gap-4 w-full px-2">
-          <button 
-            onClick={() => setMainView('dashboard')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'dashboard' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Home"
-          >
-            <Home className="w-5 h-5" />
-          </button>
+    <div className="relative h-screen overflow-hidden bg-motion-bg text-motion-text font-sans">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -left-32 h-[420px] w-[420px] rounded-full bg-brand-500/10 blur-[140px]" />
+        <div className="absolute -top-24 right-[-120px] h-[360px] w-[360px] rounded-full bg-sky-400/10 blur-[140px]" />
+        <div className="absolute bottom-[-160px] left-1/3 h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-[160px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,255,255,0.06),transparent_60%)]" />
+      </div>
 
-          <button 
-            onClick={() => setMainView('capture')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'capture' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Capture & Plan"
-          >
-            <BrainCircuit className="w-5 h-5" />
-          </button>
-
-          <button 
-            onClick={() => setMainView('calendar')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'calendar' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Calendar & Tasks"
-          >
-            <CalendarIcon className="w-5 h-5" />
-          </button>
-
-          <button 
-            onClick={() => setMainView('kanban')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'kanban' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Kanban Board"
-          >
-            <Columns className="w-5 h-5" />
-          </button>
+      <div className="relative z-10 flex h-full">
+        {/* Sidebar - Slim Rail */}
+        <aside className="w-[88px] bg-motion-panel/90 border-r border-motion-border flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0 backdrop-blur-xl">
+          <div className="w-11 h-11 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-glow mb-2 ring-1 ring-white/10">
+              <Zap className="w-5 h-5 text-white fill-white" />
+          </div>
           
-          <button 
-            onClick={() => setMainView('analytics')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'analytics' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Analytics"
-          >
-            <PieChart className="w-5 h-5" />
-          </button>
-          
-          <button 
-            onClick={() => setMainView('notes')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'notes' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Notepad"
-          >
-            <FileText className="w-5 h-5" />
-          </button>
+          <nav className="flex-1 flex flex-col gap-3 w-full px-2">
+            <button 
+              onClick={() => setMainView('dashboard')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'dashboard' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Home"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'dashboard' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <Home className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Home</span>
+            </button>
 
-          <button 
-            onClick={() => setMainView('settings')} 
-            className={`group w-full aspect-square rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-            ${mainView === 'settings' ? 'bg-brand-500/10 text-brand-400' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
-            title="Settings"
-          >
-            <SettingsIcon className="w-5 h-5" />
-          </button>
-        </nav>
-      </aside>
+            <button 
+              onClick={() => setMainView('capture')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'capture' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Capture & Plan"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'capture' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <BrainCircuit className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Capture</span>
+            </button>
 
-      <main className="flex-1 flex flex-col h-full min-w-0 bg-motion-bg relative">
+            <button 
+              onClick={() => setMainView('calendar')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'calendar' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Calendar & Tasks"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'calendar' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <CalendarIcon className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Planner</span>
+            </button>
+
+            <button 
+              onClick={() => setMainView('kanban')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'kanban' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Kanban Board"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'kanban' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <Columns className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Kanban</span>
+            </button>
+            
+            <button 
+              onClick={() => setMainView('analytics')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'analytics' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Analytics"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'analytics' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <PieChart className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Insights</span>
+            </button>
+            
+            <button 
+              onClick={() => setMainView('notes')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'notes' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Notepad"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'notes' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <FileText className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Notes</span>
+            </button>
+
+            <button 
+              onClick={() => setMainView('settings')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'settings' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="Settings"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'settings' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <SettingsIcon className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">Settings</span>
+            </button>
+          </nav>
+        </aside>
+
+        <main className="flex-1 flex flex-col h-full min-w-0 bg-motion-bg/70 relative backdrop-blur-xl">
         
         {/* Drift Alert - Floating */}
         {driftMinutes > 15 && (
@@ -161,31 +198,58 @@ export default function App() {
             </div>
         )}
 
-        {/* Header - Conditional Rendering */}
-        {mainView === 'calendar' && (
-            <header className="h-16 border-b border-motion-border flex items-center justify-between px-6 flex-shrink-0 bg-motion-bg/60 backdrop-blur-xl z-20 sticky top-0">
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-lg font-bold text-white tracking-tight min-w-[140px]">{getHeaderDateText()}</h2>
-                    
-                    <div className="flex items-center gap-1 bg-motion-card/50 rounded-lg p-1 border border-motion-border">
-                        <button onClick={() => navigateDate('prev')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-                        <button 
-                            onClick={() => setCurrentDate(new Date())} 
-                            className="px-3 py-0.5 text-xs font-medium text-motion-text hover:text-white transition-colors"
-                        >
-                            Today
-                        </button>
-                        <button onClick={() => navigateDate('next')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronRight className="w-4 h-4" /></button>
-                    </div>
-                </div>
+        {/* Global Header */}
+        <header className="h-16 border-b border-motion-border flex items-center justify-between px-6 flex-shrink-0 bg-motion-bg/70 backdrop-blur-xl z-20 sticky top-0">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner-light">
+              <ActiveViewIcon className="w-4 h-4 text-brand-400" />
             </div>
-            
-            <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-white truncate">{activeView.title}</div>
+              <div className="hidden sm:block text-[11px] text-motion-muted truncate">{activeView.subtitle}</div>
+            </div>
+
+            {mainView === 'calendar' && (
+              <div className="hidden md:flex items-center gap-3 pl-4 ml-2 border-l border-motion-border">
+                <h2 className="text-sm font-bold text-white tracking-tight min-w-[120px]">{getHeaderDateText()}</h2>
+                <div className="flex items-center gap-1 bg-motion-card/40 rounded-lg p-1 border border-motion-border">
+                    <button onClick={() => navigateDate('prev')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                    <button 
+                        onClick={() => setCurrentDate(new Date())} 
+                        className="px-3 py-0.5 text-[11px] font-semibold text-motion-text hover:text-white transition-colors"
+                    >
+                        Today
+                    </button>
+                    <button onClick={() => navigateDate('next')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsCmdPaletteOpen(true)}
+              className="hidden sm:flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/90 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+            >
+              Command
+              <span className="text-[10px] text-motion-muted">Ctrl+K</span>
+            </button>
+
+            <button
+              onClick={() => handleOpenNewTask()}
+              className="flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-semibold shadow-lg shadow-brand-500/20 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">New Task</span>
+              <span className="sm:hidden">New</span>
+            </button>
+
+            {mainView === 'calendar' && (
+              <>
                 <button 
                     onClick={handleOpenFocusMode}
                     disabled={tasks.every(t => t.status === 'Done')}
-                    className="group flex items-center gap-2 bg-motion-card hover:bg-brand-500/10 border border-motion-border hover:border-brand-500/30 px-3 py-1.5 rounded-lg text-xs font-medium text-motion-text hover:text-brand-400 transition-all shadow-sm"
+                    className="hidden md:flex group items-center gap-2 bg-motion-card/60 hover:bg-brand-500/10 border border-motion-border hover:border-brand-500/30 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-motion-text hover:text-brand-400 transition-all shadow-sm"
                 >
                     <div className="w-5 h-5 rounded-full bg-brand-500/10 flex items-center justify-center group-hover:bg-brand-500/20">
                         <Play className="w-2.5 h-2.5 fill-current" />
@@ -196,32 +260,59 @@ export default function App() {
                 <button 
                     onClick={handleAutoSchedule} 
                     disabled={isScheduling} 
-                    className={`group relative overflow-hidden flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-lg shadow-brand-500/20 transition-all disabled:opacity-50 disabled:shadow-none ${isScheduling ? 'cursor-wait' : ''}`}
+                    className={`group relative overflow-hidden hidden md:flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-[11px] font-semibold shadow-lg shadow-brand-500/20 transition-all disabled:opacity-50 disabled:shadow-none ${isScheduling ? 'cursor-wait' : ''}`}
                 >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                     <RefreshCw className={`w-3.5 h-3.5 ${isScheduling ? 'animate-spin' : ''}`} />
                     {isScheduling ? 'Optimizing...' : 'Auto-Schedule'}
                 </button>
                 
-                <div className="h-6 w-px bg-motion-border mx-1"></div>
+                <div className="hidden md:block h-6 w-px bg-motion-border mx-1"></div>
                 
-                <div className="flex items-center gap-1">
+                <div className="hidden md:flex items-center gap-1">
                     <button 
                         onClick={() => setCalendarView('week')} 
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${calendarView === 'week' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
+                        className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-colors ${calendarView === 'week' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
                     >
                         Week
                     </button>
                     <button 
                         onClick={() => setCalendarView('month')} 
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${calendarView === 'month' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
+                        className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-colors ${calendarView === 'month' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
                     >
                         Month
                     </button>
                 </div>
-            </div>
-            </header>
-        )}
+
+                <div className="flex md:hidden items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+                  <button onClick={() => navigateDate('prev')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                  <button 
+                      onClick={() => setCurrentDate(new Date())} 
+                      className="px-2 py-0.5 text-[10px] font-semibold text-motion-text hover:text-white transition-colors"
+                  >
+                      Today
+                  </button>
+                  <button onClick={() => navigateDate('next')} className="p-1 hover:bg-white/10 rounded text-motion-muted hover:text-white transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                </div>
+
+                <div className="flex md:hidden items-center gap-1">
+                    <button 
+                        onClick={() => setCalendarView('week')} 
+                        className={`px-2 py-1 text-[10px] font-semibold rounded-lg transition-colors ${calendarView === 'week' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
+                    >
+                        Week
+                    </button>
+                    <button 
+                        onClick={() => setCalendarView('month')} 
+                        className={`px-2 py-1 text-[10px] font-semibold rounded-lg transition-colors ${calendarView === 'month' ? 'bg-white/10 text-white' : 'text-motion-muted hover:text-white'}`}
+                    >
+                        Month
+                    </button>
+                </div>
+              </>
+            )}
+          </div>
+        </header>
 
         <div className="flex-1 overflow-hidden flex relative">
             {mainView === 'calendar' ? (
@@ -248,7 +339,7 @@ export default function App() {
                             </div>
                             <div className="flex gap-1">
                                 <button onClick={() => setMainView('capture')} title="Import & Plan" className="text-motion-muted hover:text-white p-2 hover:bg-white/5 rounded-lg transition-colors"><UploadCloud className="w-4 h-4" /></button>
-                                <button onClick={() => setIsProjectModalOpen(true)} title="New Project" className="text-motion-muted hover:text-white p-2 hover:bg-white/5 rounded-lg transition-colors"><Plus className="w-4 h-4" /></button>
+                                <button onClick={handleOpenNewProject} title="New Project" className="text-motion-muted hover:text-white p-2 hover:bg-white/5 rounded-lg transition-colors"><Plus className="w-4 h-4" /></button>
                             </div>
                         </div>
                         
@@ -278,7 +369,7 @@ export default function App() {
                 />
             ) : mainView === 'analytics' ? (
                 <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
-                    <Analytics tasks={tasks} projects={projects} />
+                <Analytics tasks={tasks} projects={projects} onApplySuggestedVelocity={handleApplySuggestedVelocity} />
                 </div>
             ) : mainView === 'dashboard' ? (
                 <Dashboard 
@@ -293,7 +384,7 @@ export default function App() {
                 <Capture 
                     projects={projects}
                     onAddTasks={handleImportTasks}
-                    onOpenProjectModal={() => setIsProjectModalOpen(true)}
+                    onOpenProjectModal={handleOpenNewProject}
                 />
             ) : mainView === 'notes' ? (
                 <div className="flex-1 p-8 overflow-hidden flex flex-col">
@@ -312,10 +403,17 @@ export default function App() {
                      </div>
                 </div>
             ) : (
-                <Settings settings={userSettings} onUpdate={setUserSettings} />
+                <Settings 
+                  settings={userSettings} 
+                  onUpdate={setUserSettings}
+                  projects={projects}
+                  onEditProject={handleOpenEditProject}
+                  onCreateProject={handleOpenNewProject}
+                />
             )}
         </div>
       </main>
+      </div>
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
@@ -328,7 +426,12 @@ export default function App() {
       />
 
       <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} onSave={handleSaveTask} task={editingTask} projects={projects} allTasks={tasks} />
-      <ProjectModal isOpen={isProjectModalOpen} onClose={() => setIsProjectModalOpen(false)} onSave={handleAddProject} />
+      <ProjectModal 
+        isOpen={isProjectModalOpen} 
+        onClose={() => setIsProjectModalOpen(false)} 
+        onSave={editingProject ? handleUpdateProject : handleAddProject}
+        project={editingProject || undefined}
+      />
       {/* Deprecated Modal, logic moved to Capture page but keeping component valid if needed */}
       <CourseImportModal isOpen={isCourseImportOpen} onClose={() => setIsCourseImportOpen(false)} onImport={handleImportTasks} projects={projects} completedTasks={tasks} />
       

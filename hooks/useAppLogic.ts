@@ -127,6 +127,7 @@ export const useAppLogic = () => {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCourseImportOpen, setIsCourseImportOpen] = useState(false);
   const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
   const [activeFocusTask, setActiveFocusTask] = useState<Task | null>(null);
@@ -196,20 +197,25 @@ export const useAppLogic = () => {
   };
 
   const recalculateProjectVelocity = useCallback((projectId: string, currentTasks: Task[]) => {
-      const projectTasks = currentTasks.filter(t => t.projectId === projectId && t.status === TaskStatus.DONE && t.actualDurationMinutes && t.actualDurationMinutes > 0);
+      const projectTasks = currentTasks.filter(
+          t => t.projectId === projectId && t.status === TaskStatus.DONE && t.actualDurationMinutes && t.actualDurationMinutes > 0
+      );
       if (projectTasks.length < 3) return; // Need minimum data points
 
-      const totalPlanned = projectTasks.reduce((acc, t) => acc + t.durationMinutes, 0);
-      const totalActual = projectTasks.reduce((acc, t) => acc + t.actualDurationMinutes!, 0);
+      const calibrationTasks = projectTasks.slice(-10);
+      const totalPlanned = calibrationTasks.reduce((acc, t) => acc + t.durationMinutes, 0);
+      const totalActual = calibrationTasks.reduce((acc, t) => acc + (t.actualDurationMinutes || 0), 0);
       
-      const newVelocity = totalPlanned / totalActual;
+      const newVelocity = totalPlanned / Math.max(totalActual, 1);
       
       // Clamp velocity reasonable bounds (0.5x to 2.0x)
       const clampedVelocity = Math.max(0.5, Math.min(2.0, newVelocity));
 
       setProjects(prev => prev.map(p => {
-          if (p.id === projectId && Math.abs(p.velocity - clampedVelocity) > 0.1) {
-              return { ...p, velocity: parseFloat(clampedVelocity.toFixed(2)) };
+          if (p.id !== projectId) return p;
+          const smoothedVelocity = p.velocity * 0.7 + clampedVelocity * 0.3;
+          if (Math.abs(p.velocity - smoothedVelocity) > 0.05) {
+              return { ...p, velocity: parseFloat(smoothedVelocity.toFixed(2)) };
           }
           return p;
       }));
@@ -220,16 +226,25 @@ export const useAppLogic = () => {
   const handleAddTask = useCallback((taskInput: Partial<Task> | Partial<Task>[]) => {
     const inputs = Array.isArray(taskInput) ? taskInput : [taskInput];
     
-    const newTasks: Task[] = inputs.map(partialTask => ({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        title: partialTask.title || 'New Task',
-        durationMinutes: partialTask.durationMinutes || userSettings.defaultTaskDuration,
-        priority: partialTask.priority as any,
-        status: TaskStatus.TODO,
-        projectId: partialTask.projectId || projects[0].id,
-        subtasks: [],
-        ...partialTask,
-    }));
+    const newTasks: Task[] = inputs.map(partialTask => {
+        const resolvedProjectId = partialTask.projectId || projects[0].id;
+        const projectDefaults = projects.find(p => p.id === resolvedProjectId);
+
+        return {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            title: partialTask.title || 'New Task',
+            durationMinutes: partialTask.durationMinutes
+                ?? projectDefaults?.defaultTaskDuration
+                ?? userSettings.defaultTaskDuration,
+            priority: (partialTask.priority as Priority | undefined)
+                ?? projectDefaults?.defaultPriority
+                ?? Priority.MEDIUM,
+            status: TaskStatus.TODO,
+            projectId: resolvedProjectId,
+            subtasks: [],
+            ...partialTask,
+        };
+    });
     
     setTasks(prev => [...newTasks, ...prev]);
     addToast('success', `Added ${newTasks.length} task(s)`);
@@ -336,6 +351,26 @@ export const useAppLogic = () => {
   const handleAddProject = useCallback((project: Project) => {
       setProjects(prev => [...prev, project]);
       addToast('success', 'Project created');
+  }, []);
+
+  const handleUpdateProject = useCallback((project: Project) => {
+      setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, ...project } : p)));
+      addToast('success', 'Project updated');
+  }, []);
+
+  const handleOpenEditProject = useCallback((project: Project) => {
+      setEditingProject(project);
+      setIsProjectModalOpen(true);
+  }, []);
+
+  const handleOpenNewProject = useCallback(() => {
+      setEditingProject(null);
+      setIsProjectModalOpen(true);
+  }, []);
+
+  const handleApplySuggestedVelocity = useCallback((projectId: string, velocity: number) => {
+      setProjects(prev => prev.map(p => (p.id === projectId ? { ...p, velocity: parseFloat(velocity.toFixed(2)) } : p)));
+      addToast('success', 'Velocity updated');
   }, []);
 
   const handleOpenEditTask = useCallback((task: Task) => {
@@ -525,6 +560,7 @@ export const useAppLogic = () => {
       isTaskModalOpen, setIsTaskModalOpen,
       editingTask, setEditingTask,
       isProjectModalOpen, setIsProjectModalOpen,
+      editingProject,
       isCourseImportOpen, setIsCourseImportOpen,
       isFocusModeOpen, setIsFocusModeOpen,
       isMorningBriefingOpen, setIsMorningBriefingOpen,
@@ -533,9 +569,10 @@ export const useAppLogic = () => {
       
       // Handlers
       handleAddTask, handleImportTasks, handleSaveTask,
-      handleDeleteTask, handleToggleStatus, handleAddProject,
+      handleDeleteTask, handleToggleStatus, handleAddProject, handleUpdateProject,
       handleOpenEditTask, handleOpenNewTask, handleTaskMove, handleTaskResize, handleDuplicateTask,
       handleResolveConflicts, handleAutoSchedule, navigateDate, resetDrift, handleOpenFocusMode,
-      handleStartTask, handleTaskMoveStatus, removeToast, awardXP
+      handleStartTask, handleTaskMoveStatus, handleOpenEditProject, handleOpenNewProject,
+      handleApplySuggestedVelocity, removeToast, awardXP
   };
 };
