@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Task, Priority, TaskStatus } from "../types";
 import { addMinutes } from "date-fns";
 import { roundToNearest15 } from "../utils/helpers";
+import { getMemoryContext } from "./memoryService";
 
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
@@ -15,9 +16,10 @@ export const parseTaskInput = async (input: string): Promise<Partial<Task>> => {
   if (!apiKey) return { title: input, durationMinutes: 30, priority: Priority.MEDIUM };
 
   try {
+    const memoryContext = getMemoryContext(input);
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Extract task details from: "${input}". 
+      contents: `${memoryContext ? `${memoryContext}\n\n` : ''}Extract task details from: "${input}". 
       Return JSON. 
       Rules:
       - Default duration: 30m.
@@ -81,9 +83,10 @@ export const parseBulkTasks = async (input: string): Promise<Partial<Task>[]> =>
   }
 
   try {
+    const memoryContext = getMemoryContext(input);
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Parse this "Brain Dump" into a list of tasks. 
+      contents: `${memoryContext ? `${memoryContext}\n\n` : ''}Parse this "Brain Dump" into a list of tasks. 
       Input: """${input}"""
       
       Return a JSON Array of tasks.
@@ -157,6 +160,7 @@ export const generateTasksFromContent = async (
 ): Promise<Task[]> => {
   if (!apiKey) throw new Error("API Key missing");
 
+  const memoryContext = getMemoryContext(contextNote);
   let contentPart: any;
   if (typeof content === 'string') {
     contentPart = { text: content };
@@ -169,6 +173,7 @@ export const generateTasksFromContent = async (
     Goal: Break down the provided content into actionable, granular Tasks and Subtasks.
     
     Context from User: "${contextNote}"
+    ${memoryContext ? `\n${memoryContext}` : ''}
     Project Velocity Multiplier: ${projectVelocity} (If >1, user works faster, so reduce duration. If <1, increase duration).
 
     Process:

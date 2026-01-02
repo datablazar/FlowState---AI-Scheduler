@@ -54,6 +54,7 @@ export interface Task {
   deadline?: string; // ISO Date string
   projectId?: string;
   status: TaskStatus;
+  completedAt?: string; // ISO Date string
   description?: string;
   isFixed?: boolean; // If true, it's a hard calendar event
   scheduledStart?: string; // ISO Date string
