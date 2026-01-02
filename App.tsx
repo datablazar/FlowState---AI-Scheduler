@@ -88,18 +88,19 @@ export default function App() {
   const ActiveViewIcon = activeView.icon;
 
   return (
-    <div className="relative h-screen overflow-hidden bg-motion-bg text-motion-text font-sans">
+    <div className="app-shell font-sans">
+      <div className="app-shell-grid" />
+      <div className="app-shell-noise" />
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -left-32 h-[420px] w-[420px] rounded-full bg-brand-500/10 blur-[140px]" />
-        <div className="absolute -top-24 right-[-120px] h-[360px] w-[360px] rounded-full bg-sky-400/10 blur-[140px]" />
-        <div className="absolute bottom-[-160px] left-1/3 h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-[160px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,255,255,0.06),transparent_60%)]" />
+        <div className="absolute -top-32 left-1/4 h-[360px] w-[360px] rounded-full bg-brand-500/15 blur-[140px]" />
+        <div className="absolute top-20 right-[-140px] h-[280px] w-[280px] rounded-full bg-emerald-500/15 blur-[120px]" />
+        <div className="absolute bottom-[-180px] left-1/2 h-[360px] w-[360px] rounded-full bg-sky-400/15 blur-[140px]" />
       </div>
 
       <div className="relative z-10 flex h-full">
         {/* Sidebar - Slim Rail */}
-        <aside className="w-[88px] bg-motion-panel/90 border-r border-motion-border flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0 backdrop-blur-xl">
-          <div className="w-11 h-11 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-glow mb-2 ring-1 ring-white/10">
+        <aside className="w-[92px] bg-motion-panel/80 border-r border-motion-border/70 flex flex-col items-center py-6 gap-6 z-30 flex-shrink-0 backdrop-blur-2xl shadow-panel">
+          <div className="w-11 h-11 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-glow ring-1 ring-white/10">
               <Zap className="w-5 h-5 text-white fill-white" />
           </div>
           
@@ -107,7 +108,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('dashboard')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'dashboard' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'dashboard' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Home"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'dashboard' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -118,7 +119,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('capture')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'capture' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'capture' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Capture & Plan"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'capture' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -129,7 +130,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('calendar')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'calendar' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'calendar' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Calendar & Tasks"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'calendar' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -140,7 +141,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('kanban')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'kanban' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'kanban' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Kanban Board"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'kanban' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -151,7 +152,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('analytics')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'analytics' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'analytics' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Analytics"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'analytics' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -162,7 +163,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('notes')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'notes' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'notes' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Notepad"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'notes' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -173,7 +174,7 @@ export default function App() {
             <button 
               onClick={() => setMainView('settings')} 
               className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
-              ${mainView === 'settings' ? 'bg-brand-500/10 text-brand-300 shadow-glow' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              ${mainView === 'settings' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
               title="Settings"
             >
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'settings' ? 'bg-brand-500' : 'bg-transparent'}`} />
@@ -183,7 +184,7 @@ export default function App() {
           </nav>
         </aside>
 
-        <main className="flex-1 flex flex-col h-full min-w-0 bg-motion-bg/70 relative backdrop-blur-xl">
+        <main className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
         
         {/* Drift Alert - Floating */}
         {driftMinutes > 15 && (
@@ -199,7 +200,7 @@ export default function App() {
         )}
 
         {/* Global Header */}
-        <header className="h-16 border-b border-motion-border flex items-center justify-between px-6 flex-shrink-0 bg-motion-bg/70 backdrop-blur-xl z-20 sticky top-0">
+        <header className="h-16 border-b border-motion-border/80 flex items-center justify-between px-6 flex-shrink-0 bg-motion-panel/70 backdrop-blur-2xl z-20 sticky top-0 shadow-panel">
           <div className="flex items-center gap-4 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner-light">
               <ActiveViewIcon className="w-4 h-4 text-brand-400" />
@@ -317,7 +318,7 @@ export default function App() {
         <div className="flex-1 overflow-hidden flex relative">
             {mainView === 'calendar' ? (
                 <>
-                    <div className="flex-1 overflow-hidden h-full flex flex-col bg-motion-bg relative">
+                    <div className="flex-1 overflow-hidden h-full flex flex-col bg-transparent relative">
                        <Calendar 
                         date={currentDate} 
                         tasks={tasks} 
@@ -331,8 +332,8 @@ export default function App() {
                     </div>
                     
                     {/* Right Sidebar (Task Panel) */}
-                    <div className="w-[340px] bg-motion-panel border-l border-motion-border flex flex-col flex-shrink-0 h-full z-10 shadow-2xl">
-                        <div className="p-4 border-b border-motion-border flex items-center justify-between bg-motion-panel/95 backdrop-blur-sm">
+                    <div className="w-[340px] bg-motion-panel/85 border-l border-motion-border/80 flex flex-col flex-shrink-0 h-full z-10 shadow-panel backdrop-blur-2xl">
+                        <div className="p-4 border-b border-motion-border/80 flex items-center justify-between bg-motion-panel/90 backdrop-blur-sm">
                             <div className="flex items-center gap-2">
                                 <Layers className="w-4 h-4 text-brand-400" />
                                 <span className="text-sm font-bold text-white tracking-wide">Tasks</span>
