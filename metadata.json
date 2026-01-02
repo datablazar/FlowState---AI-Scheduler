@@ -1,0 +1,5 @@
+{
+  "name": "FlowState - AI Scheduler",
+  "description": "A Motion-like smart scheduling app for students and teams that optimizes your day using Gemini AI.",
+  "requestFramePermissions": []
+}
