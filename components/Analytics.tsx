@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from 'recharts';
 import { Task, Project, TaskStatus, EnergyLevel } from '../types';
 import { addDays, addMinutes, differenceInBusinessDays, differenceInMinutes, format, isAfter, isBefore, isSameDay, startOfDay } from 'date-fns';
@@ -37,6 +37,36 @@ const isEnergyAligned = (energy: EnergyLevel | undefined, start: Date): boolean 
   if (energy === 'high') return hour < 11;
   if (energy === 'medium') return hour >= 10 && hour < 16;
   return hour >= 15;
+};
+
+const ChartContainer: React.FC<{ minHeight?: number; children: React.ReactNode }> = ({ minHeight = 250, children }) => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [hasSize, setHasSize] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      setHasSize(width > 20 && height > 20);
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="flex-1 w-full" style={{ minHeight }}>
+      {hasSize ? (
+        children
+      ) : (
+        <div className="h-full flex items-center justify-center text-xs text-motion-muted">
+          Loading chart...
+        </div>
+      )}
+    </div>
+  );
 };
 
 const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggestedVelocity }) => {
@@ -869,7 +899,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
             <span>Longest {Math.round(durationSummary.longestMinutes)}m</span>
           </div>
         </div>
-        <div className="flex-1 w-full min-h-[240px]">
+        <ChartContainer minHeight={260}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={durationData}>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} />
@@ -895,14 +925,14 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartContainer>
         <p className="mt-3 text-xs text-motion-muted">Counts of upcoming tasks by estimated duration bucket.</p>
       </div>
 
       {/* Project Distribution */}
       <div className="bg-motion-card p-6 rounded-xl border border-motion-border shadow-sm flex flex-col">
         <h3 className="text-lg font-bold text-white mb-4">Focus Distribution</h3>
-        <div className="flex-1 w-full min-h-[250px]">
+        <ChartContainer minHeight={260}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -925,7 +955,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
               />
             </PieChart>
           </ResponsiveContainer>
-        </div>
+        </ChartContainer>
         <div className="mt-4 flex flex-wrap gap-3 justify-center">
             {projectData.map(p => (
                 <div key={p.name} className="flex items-center gap-1 text-xs text-motion-muted">
@@ -939,7 +969,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
       {/* Workload */}
       <div className="bg-motion-card p-6 rounded-xl border border-motion-border shadow-sm flex flex-col">
         <h3 className="text-lg font-bold text-white mb-4">Upcoming Workload</h3>
-        <div className="flex-1 w-full min-h-[250px]">
+        <ChartContainer minHeight={260}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={workloadData}>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
@@ -951,7 +981,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
               <Bar dataKey="hours" fill="#0ea5e9" radius={[4, 4, 4, 4]} barSize={30} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartContainer>
         <p className="text-center text-sm text-motion-muted mt-2">Scheduled hours (Mon-Fri)</p>
       </div>
 
@@ -959,7 +989,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
       <div className="bg-motion-card p-6 rounded-xl border border-motion-border shadow-sm flex flex-col md:col-span-2">
         <h3 className="text-lg font-bold text-white mb-1">Velocity Tracking</h3>
         <p className="text-xs text-motion-muted mb-4">Planned vs. Actual duration for recent tasks</p>
-        <div className="flex-1 w-full min-h-[250px]">
+        <ChartContainer minHeight={280}>
           {velocityData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-motion-muted bg-white/5 border border-white/10 rounded-xl">
               Track time in Focus Mode to unlock velocity insights.
@@ -979,7 +1009,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ tasks, projects, onApplySuggested
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </ChartContainer>
       </div>
     </div>
   );
