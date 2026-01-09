@@ -1,9 +1,9 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, PieChart, Zap, Plus, RefreshCw, 
   ChevronLeft, ChevronRight, UploadCloud, AlertTriangle, 
-  LayoutGrid, Settings as SettingsIcon, Play, Layers, FileText, Home, Columns, BrainCircuit
+  LayoutGrid, Settings as SettingsIcon, Play, Layers, FileText, Home, Columns, BrainCircuit, ListTodo
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 
@@ -16,14 +16,16 @@ import TaskModal from './components/TaskModal';
 import ProjectModal from './components/ProjectModal';
 import CourseImportModal from './components/CourseImportModal';
 import Settings from './components/Settings';
+import TodoListComposer from './components/TodoListComposer';
 import FocusMode from './components/FocusMode';
 import Dashboard from './components/Dashboard';
 import Capture from './components/Capture';
 import CommandPalette from './components/CommandPalette';
 import ToastContainer from './components/ToastContainer';
 import MorningBriefing from './components/MorningBriefing';
+import TodoPage from './components/TodoPage';
 import { useAppLogic } from './hooks/useAppLogic';
-import { ViewMode } from './types';
+import { Priority, Task, ViewMode } from './types';
 
 export default function App() {
   const {
@@ -34,7 +36,7 @@ export default function App() {
       userSettings, setUserSettings,
       sidebarNotes, setSidebarNotes,
       isScheduling, driftMinutes,
-      toasts, removeToast,
+      toasts, removeToast, unscheduledTasks,
       
       isTaskModalOpen, setIsTaskModalOpen,
       editingTask, 
@@ -51,7 +53,8 @@ export default function App() {
       handleOpenEditTask, handleOpenNewTask, handleTaskMove, handleTaskResize, 
       handleDuplicateTask, handleResolveConflicts, handleTaskMoveStatus, awardXP,
       handleAutoSchedule, navigateDate, handleOpenFocusMode, handleStartTask,
-      handleOpenEditProject, handleOpenNewProject, handleApplySuggestedVelocity
+      handleOpenEditProject, handleOpenNewProject, handleApplySuggestedVelocity,
+      overwriteTasks, setUnscheduledTasks
   } = useAppLogic();
 
   // Global Keyboard Shortcuts
@@ -77,6 +80,7 @@ export default function App() {
   const viewDetails: Record<ViewMode, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
       dashboard: { title: 'Dashboard', subtitle: 'Your performance at a glance', icon: LayoutGrid },
       capture: { title: 'Capture', subtitle: 'Collect ideas and shape plans', icon: BrainCircuit },
+      todo: { title: 'To-Do List', subtitle: 'Focus on tasks and priorities', icon: ListTodo },
       calendar: { title: 'Planner', subtitle: 'Schedule and focus timeline', icon: CalendarIcon },
       kanban: { title: 'Kanban', subtitle: 'Move tasks across stages', icon: Columns },
       analytics: { title: 'Insights', subtitle: 'Trends, pacing, and constraints', icon: PieChart },
@@ -86,6 +90,37 @@ export default function App() {
 
   const activeView = viewDetails[mainView];
   const ActiveViewIcon = activeView.icon;
+
+  const scheduleAfterAddRef = useRef(false);
+
+  const handleAddAndSchedule = (newTasks: Partial<Task>[]) => {
+    scheduleAfterAddRef.current = true;
+    handleAddTask(newTasks);
+  };
+
+  useEffect(() => {
+    if (scheduleAfterAddRef.current) {
+        scheduleAfterAddRef.current = false;
+        handleAutoSchedule();
+    }
+  }, [tasks]);
+
+  const handleForceScheduleUnscheduled = () => {
+    const ids = new Set(unscheduledTasks.map(u => u.task.id));
+    overwriteTasks(prev => prev.map(t => ids.has(t.id) ? { ...t, deadline: undefined, latestEnd: undefined, isFixed: false } : t));
+    setUnscheduledTasks([]);
+    handleAutoSchedule();
+  };
+
+  const handleDeleteUnscheduled = () => {
+    const ids = new Set(unscheduledTasks.map(u => u.task.id));
+    overwriteTasks(prev => prev.filter(t => !ids.has(t.id)));
+    setUnscheduledTasks([]);
+  };
+
+  const handleKeepUnscheduled = () => {
+    setUnscheduledTasks([]);
+  };
 
   return (
     <div className="app-shell font-sans">
@@ -125,6 +160,17 @@ export default function App() {
               <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'capture' ? 'bg-brand-500' : 'bg-transparent'}`} />
               <BrainCircuit className="w-5 h-5" />
               <span className="text-[9px] font-semibold uppercase tracking-wider">Capture</span>
+            </button>
+
+            <button 
+              onClick={() => setMainView('todo')} 
+              className={`relative group w-full h-14 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1
+              ${mainView === 'todo' ? 'bg-brand-500/15 text-brand-300 shadow-glow ring-1 ring-brand-500/20' : 'text-motion-muted hover:text-white hover:bg-white/5'}`}
+              title="To-Do List"
+            >
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full ${mainView === 'todo' ? 'bg-brand-500' : 'bg-transparent'}`} />
+              <ListTodo className="w-5 h-5" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider">To-Do</span>
             </button>
 
             <button 
@@ -347,6 +393,16 @@ export default function App() {
                         <div className="p-4 border-b border-motion-border/50 bg-motion-bg/30">
                             <QuickAdd onAddTask={handleAddTask} />
                         </div>
+
+                        <div className="p-4 border-b border-motion-border/50 bg-motion-bg/30">
+                            <TodoListComposer 
+                                defaultDuration={userSettings.defaultTaskDuration}
+                                defaultPriority={projects[0]?.defaultPriority || Priority.MEDIUM}
+                                onAdd={handleAddTask}
+                                onAddAndSchedule={handleAddAndSchedule}
+                                isScheduling={isScheduling}
+                            />
+                        </div>
                         
                         <div className="flex-1 overflow-hidden flex flex-col p-4 gap-4">
                             <TaskList 
@@ -372,6 +428,19 @@ export default function App() {
                 <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
                 <Analytics tasks={tasks} projects={projects} onApplySuggestedVelocity={handleApplySuggestedVelocity} />
                 </div>
+            ) : mainView === 'todo' ? (
+                <TodoPage
+                    tasks={tasks}
+                    projects={projects}
+                    isScheduling={isScheduling}
+                    onAddTask={handleAddTask}
+                    onAddAndSchedule={handleAddAndSchedule}
+                    onToggleStatus={handleToggleStatus}
+                    onDelete={handleDeleteTask}
+                    onEdit={handleOpenEditTask}
+                    onDuplicate={handleDuplicateTask}
+                    onAutoSchedule={handleAutoSchedule}
+                />
             ) : mainView === 'dashboard' ? (
                 <Dashboard 
                     tasks={tasks} 
@@ -415,6 +484,40 @@ export default function App() {
         </div>
       </main>
       </div>
+
+      {unscheduledTasks.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-motion-panel border border-amber-500/30 shadow-2xl rounded-xl p-4 space-y-3 backdrop-blur-xl">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-300 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-white">Tasks left unscheduled</div>
+              <p className="text-xs text-motion-muted">
+                {unscheduledTasks.length} item(s) stayed off the calendar. Force scheduling ignores deadlines; keep to leave in the list; delete to drop them.
+              </p>
+            </div>
+          </div>
+          <div className="max-h-32 overflow-y-auto custom-scrollbar space-y-1 pr-1">
+            {unscheduledTasks.map(({ task, reason }) => (
+              <div key={task.id} className="text-[11px] text-white/80 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 flex items-center gap-2">
+                <Flag className="w-3 h-3 text-motion-muted" />
+                <span className="truncate">{task.title}</span>
+                <span className="text-[10px] text-amber-300 ml-auto">{reason}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleKeepUnscheduled} className="flex-1 px-3 py-2 text-[11px] font-semibold rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
+              Keep
+            </button>
+            <button onClick={handleForceScheduleUnscheduled} className="flex-1 px-3 py-2 text-[11px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+              Force schedule
+            </button>
+            <button onClick={handleDeleteUnscheduled} className="flex-1 px-3 py-2 text-[11px] font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors">
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 

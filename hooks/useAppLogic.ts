@@ -139,6 +139,7 @@ export const useAppLogic = () => {
   const [calendarView, setCalendarView] = useState<CalendarView>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isScheduling, setIsScheduling] = useState(false);
+  const [unscheduledTasks, setUnscheduledTasks] = useState<{ task: Task; reason: string }[]>([]);
   
   // Notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -157,6 +158,10 @@ export const useAppLogic = () => {
   const removeToast = (id: string) => {
       setToasts(prev => prev.filter(t => t.id !== id));
   };
+
+  const overwriteTasks = useCallback((updater: (prev: Task[]) => Task[]) => {
+      setTasks(prev => updater(prev));
+  }, []);
 
   const awardXP = (amount: number) => {
       setUserStats(prev => {
@@ -415,6 +420,7 @@ export const useAppLogic = () => {
   const handleAutoSchedule = async () => {
     setIsScheduling(true);
     addToast('info', 'AI is optimizing your schedule...');
+    setUnscheduledTasks([]);
     
     let processedTasks = [...tasks];
     if (userSettings.autoRescheduleOverdue) {
@@ -474,7 +480,22 @@ export const useAppLogic = () => {
         );
         
         const doneTasks = processedTasks.filter(t => t.status === TaskStatus.DONE);
-        setTasks([...fixed, ...doneTasks, ...result.scheduled]);
+        const unscheduledClean = result.unscheduled.map(({ task, reason }) => ({
+            ...task,
+            scheduledStart: undefined,
+            scheduledEnd: undefined,
+            isFixed: false,
+            schedulingReason: reason
+        }));
+
+        setTasks([...fixed, ...doneTasks, ...result.scheduled, ...unscheduledClean]);
+        setUnscheduledTasks(result.unscheduled);
+        if (result.unscheduled.length > 0) {
+            addToast('info', `${result.unscheduled.length} task(s) left unscheduled. Review options below.`);
+        }
+        if (result.warnings.length > 0) {
+            result.warnings.forEach(w => addToast('error', w));
+        }
         resetDrift();
         addToast('success', 'Schedule optimized successfully');
 
@@ -554,7 +575,7 @@ export const useAppLogic = () => {
       userSettings, setUserSettings,
       sidebarNotes, setSidebarNotes,
       isScheduling, driftMinutes,
-      toasts,
+      toasts, unscheduledTasks,
       
       // Modals
       isTaskModalOpen, setIsTaskModalOpen,
@@ -573,6 +594,6 @@ export const useAppLogic = () => {
       handleOpenEditTask, handleOpenNewTask, handleTaskMove, handleTaskResize, handleDuplicateTask,
       handleResolveConflicts, handleAutoSchedule, navigateDate, resetDrift, handleOpenFocusMode,
       handleStartTask, handleTaskMoveStatus, handleOpenEditProject, handleOpenNewProject,
-      handleApplySuggestedVelocity, removeToast, awardXP
+      handleApplySuggestedVelocity, removeToast, awardXP, overwriteTasks, setUnscheduledTasks
   };
 };

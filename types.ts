@@ -53,6 +53,7 @@ export interface Task {
   durationMinutes: number;
   priority: Priority;
   deadline?: string; // ISO Date string
+  isTodoList?: boolean; // Marked when created via To-Do list builder
   projectId?: string;
   status: TaskStatus;
   description?: string;
@@ -93,7 +94,7 @@ export interface Project {
   icon?: string;
 }
 
-export type ViewMode = 'dashboard' | 'calendar' | 'kanban' | 'analytics' | 'settings' | 'notes' | 'capture';
+export type ViewMode = 'dashboard' | 'calendar' | 'kanban' | 'analytics' | 'settings' | 'notes' | 'capture' | 'todo';
 export type CalendarView = 'day' | 'week' | 'month';
 
 export interface ToastMessage {

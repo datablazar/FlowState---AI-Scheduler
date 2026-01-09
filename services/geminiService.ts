@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { Task, Priority, TaskStatus } from "../types";
-import { addMinutes } from "date-fns";
+import { addMinutes, endOfDay, addDays } from "date-fns";
 import { roundToNearest15 } from "../utils/helpers";
 
 const apiKey = process.env.API_KEY || '';
@@ -24,6 +24,7 @@ export const parseTaskInput = async (input: string): Promise<Partial<Task>> => {
       - Default priority: Medium.
       - If specific time mentioned (e.g. "at 5pm"), set 'scheduledStart' (ISO) and 'isFixed': true.
       - If 'after [Task]', extract dependency name context.
+      - Identify 2-6 crisp subtasks if the task is multi-step. Keep them short.
       `,
       config: {
         responseMimeType: "application/json",
@@ -37,6 +38,16 @@ export const parseTaskInput = async (input: string): Promise<Partial<Task>> => {
             description: { type: Type.STRING },
             isFixed: { type: Type.BOOLEAN },
             scheduledStart: { type: Type.STRING },
+            subtasks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING }
+                },
+                required: ["title"]
+              }
+            }
           },
           required: ["title", "durationMinutes", "priority"],
         },
@@ -52,6 +63,14 @@ export const parseTaskInput = async (input: string): Promise<Partial<Task>> => {
         scheduledEnd = addMinutes(new Date(data.scheduledStart), duration).toISOString();
     }
 
+    const subtasks = Array.isArray(data.subtasks)
+      ? data.subtasks.map((s: any, idx: number) => ({
+          id: `sub-${Date.now()}-${idx}`,
+          title: s.title || `Step ${idx + 1}`,
+          isCompleted: false
+        }))
+      : undefined;
+
     return {
       title: data.title,
       durationMinutes: duration,
@@ -61,7 +80,8 @@ export const parseTaskInput = async (input: string): Promise<Partial<Task>> => {
       status: TaskStatus.TODO,
       isFixed: data.isFixed,
       scheduledStart: data.scheduledStart,
-      scheduledEnd: scheduledEnd
+      scheduledEnd: scheduledEnd,
+      subtasks
     };
   } catch (error) {
     console.error("Gemini parse error:", error);
@@ -88,9 +108,10 @@ export const parseBulkTasks = async (input: string): Promise<Partial<Task>[]> =>
       
       Return a JSON Array of tasks.
       Rules:
-      - Infer duration and priority if possible. Default 30m, Medium.
+      - Infer duration, priority, and optional subtasks if possible. Default 30m, Medium.
       - Keep titles concise.
       - If a line seems like a note for the previous task, add it to description.
+      - Add 2-6 short subtasks for multi-step items when helpful.
       `,
       config: {
         responseMimeType: "application/json",
@@ -103,6 +124,14 @@ export const parseBulkTasks = async (input: string): Promise<Partial<Task>[]> =>
               description: { type: Type.STRING },
               durationMinutes: { type: Type.NUMBER },
               priority: { type: Type.STRING, enum: [Priority.HIGH, Priority.MEDIUM, Priority.LOW] },
+              subtasks: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: { title: { type: Type.STRING } },
+                  required: ["title"]
+                }
+              }
             },
             required: ["title", "durationMinutes", "priority"],
           },
@@ -111,14 +140,112 @@ export const parseBulkTasks = async (input: string): Promise<Partial<Task>[]> =>
     });
 
     const parsed = JSON.parse(response.text || '[]');
-    return parsed.map((t: any) => ({
+    return parsed.map((t: any, idx: number) => ({
         ...t,
         durationMinutes: roundToNearest15(t.durationMinutes || 30),
-        status: TaskStatus.TODO
+        status: TaskStatus.TODO,
+        subtasks: Array.isArray(t.subtasks)
+          ? t.subtasks.map((s: any, sIdx: number) => ({
+              id: `sub-${Date.now()}-${idx}-${sIdx}`,
+              title: s.title || `Step ${sIdx + 1}`,
+              isCompleted: false
+            }))
+          : undefined
     }));
   } catch (error) {
     console.error("Gemini bulk parse error:", error);
     return [];
+  }
+};
+
+export interface TodoEstimate {
+  title: string;
+  durationMinutes: number;
+  priority: Priority;
+  deadline?: string;
+}
+
+const heuristicPriority = (title: string, fallback: Priority): Priority => {
+  const normalized = title.toLowerCase();
+  if (/(urgent|asap|!|today|before|due)/.test(normalized)) return Priority.HIGH;
+  if (/(maybe|later|someday|idea)/.test(normalized)) return Priority.LOW;
+  if (/(follow up|reply|email|ping)/.test(normalized)) return Priority.MEDIUM;
+  return fallback;
+};
+
+const heuristicDuration = (title: string, fallback: number): number => {
+  const normalized = title.toLowerCase();
+  if (/(call|email|reply|check in)/.test(normalized)) return 15;
+  if (/(draft|write|outline|plan)/.test(normalized)) return 60;
+  if (/(research|investigate|debug|deep dive)/.test(normalized)) return 90;
+  if (/(review|refine|edit)/.test(normalized)) return 45;
+  return fallback;
+};
+
+const heuristicDeadline = (priority: Priority): string | undefined => {
+  const today = new Date();
+  if (priority === Priority.HIGH) return endOfDay(addDays(today, 1)).toISOString();
+  if (priority === Priority.MEDIUM) return endOfDay(addDays(today, 3)).toISOString();
+  return endOfDay(addDays(today, 5)).toISOString();
+};
+
+export const estimateTodoList = async (
+  items: string[],
+  defaults: { durationMinutes: number; priority: Priority }
+): Promise<TodoEstimate[]> => {
+  const base = items
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(title => {
+      const priority = heuristicPriority(title, defaults.priority);
+      return {
+        title,
+        durationMinutes: roundToNearest15(heuristicDuration(title, defaults.durationMinutes)),
+        priority,
+        deadline: heuristicDeadline(priority)
+      };
+    });
+
+  if (!apiKey) return base;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Given this to-do list, assign an intelligent duration (minutes, realistic and aligned to 15-minute blocks) and priority (High/Medium/Low). 
+      If a line already implies urgency, respect it. Keep titles as-is.
+      Default duration: ${defaults.durationMinutes} minutes. Default priority: ${defaults.priority}.
+      Suggest a realistic deadline (ISO date) if obvious; otherwise keep it null. High priority should usually be within 1-2 days, Medium 3-5 days, Low 5-7 days.
+      Lines: ${items.join(" | ")}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              durationMinutes: { type: Type.NUMBER },
+              priority: { type: Type.STRING, enum: [Priority.HIGH, Priority.MEDIUM, Priority.LOW] },
+              deadline: { type: Type.STRING, description: "ISO date or null" },
+            },
+            required: ["title", "durationMinutes", "priority"],
+          },
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '[]');
+    if (!Array.isArray(parsed) || parsed.length === 0) return base;
+
+    return parsed.map((item: any, idx: number) => ({
+      title: item.title || base[idx]?.title || `Task ${idx + 1}`,
+      durationMinutes: roundToNearest15(item.durationMinutes || defaults.durationMinutes),
+      priority: (item.priority as Priority) || defaults.priority,
+      deadline: item.deadline || base[idx]?.deadline
+    }));
+  } catch (error) {
+    console.error("Gemini todo estimate error:", error);
+    return base;
   }
 };
 

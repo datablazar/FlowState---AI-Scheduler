@@ -3,7 +3,7 @@ import { Task, TaskStatus, Priority, UserSettings, EnergyLevel } from '../types'
 import { 
   addMinutes, isBefore, isAfter, setHours, setMinutes, 
   areIntervalsOverlapping, startOfDay, addDays, 
-  differenceInMinutes, isEqual, setSeconds, setMilliseconds, subMinutes
+  differenceInMinutes, isEqual, setSeconds, setMilliseconds, subMinutes, endOfDay
 } from "date-fns";
 
 interface Slot {
@@ -62,7 +62,7 @@ export const suggestSchedule = async (
   currentDate: Date,
   energyProfile: string = 'morning_lark',
   settings: UserSettings
-): Promise<{ scheduled: Task[], breaks: Task[] }> => {
+): Promise<{ scheduled: Task[], breaks: Task[], unscheduled: { task: Task; reason: string }[], warnings: string[] }> => {
   
   const LOOKAHEAD_DAYS = 180; // 6 months lookahead
   
@@ -227,6 +227,9 @@ export const suggestSchedule = async (
   // --- 3. Fit Tasks (Greedy with Dependencies) ---
   const scheduledTasks: Task[] = [];
   const taskCompletionTimes = new Map<string, Date>();
+  const unscheduled: { task: Task; reason: string }[] = [];
+  let scheduledHighTodo = false;
+  let alternateTodo = true;
   
   // Initialize fixed task completion times
   fixedTasks.forEach(t => {
@@ -262,7 +265,7 @@ export const suggestSchedule = async (
           break;
       }
 
-      readyTasks.sort((a, b) => {
+      const sortByScore = (arr: Task[]) => arr.sort((a, b) => {
           const scoreA = getTaskScore(a);
           const scoreB = getTaskScore(b);
           if (scoreB !== scoreA) return scoreB - scoreA;
@@ -270,7 +273,25 @@ export const suggestSchedule = async (
           return b.durationMinutes - a.durationMinutes;
       });
 
-      const task = readyTasks[0];
+      const readyTodos = sortByScore(readyTasks.filter(t => t.isTodoList));
+      const readyProjects = sortByScore(readyTasks.filter(t => !t.isTodoList));
+      const urgentTodos = readyTodos.filter(t => t.deadline);
+
+      let task: Task | undefined;
+      if (urgentTodos.length > 0) {
+          task = urgentTodos[0];
+      } else if (alternateTodo && readyTodos.length > 0) {
+          task = readyTodos[0];
+      } else if (!alternateTodo && readyProjects.length > 0) {
+          task = readyProjects[0];
+      } else if (readyTodos.length > 0) {
+          task = readyTodos[0];
+      } else {
+          task = readyProjects[0];
+      }
+
+      if (!task) break;
+      alternateTodo = !alternateTodo;
       processedIds.add(task.id);
 
       let dependencyConstraint = currentDate;
@@ -289,7 +310,14 @@ export const suggestSchedule = async (
           }
       }
 
-      const latestConstraint = task.latestEnd ? new Date(task.latestEnd) : null;
+      const deadlineConstraint = task.deadline ? endOfDay(new Date(task.deadline)) : null;
+      const latestConstraint = (() => {
+          const explicit = task.latestEnd ? new Date(task.latestEnd) : null;
+          if (deadlineConstraint && explicit) {
+              return isBefore(deadlineConstraint, explicit) ? deadlineConstraint : explicit;
+          }
+          return deadlineConstraint || explicit;
+      })();
 
       let startSlotIndex = 0;
       if (task.energy) {
@@ -355,7 +383,8 @@ export const suggestSchedule = async (
 
           const baseReason = settings.enableChunking 
               ? `Optimized for ${settings.workChunkMinutes}m flow.` 
-              : `Scheduled based on priority.`;
+              : `Scheduled with priority-first order.`;
+          const priorityReason = ` Priority ${task.priority} placed ahead of lower levels.`;
           const energyReason = task.energy ? ` Energy ${task.energy}.` : '';
           const windowReason = task.earliestStart || task.latestEnd ? ` Window applied.` : '';
 
@@ -370,7 +399,7 @@ export const suggestSchedule = async (
               durationMinutes: fit,
               scheduledStart: partStart.toISOString(),
               scheduledEnd: partEnd.toISOString(),
-              schedulingReason: `${baseReason}${energyReason}${windowReason}`
+              schedulingReason: `${baseReason}${priorityReason}${energyReason}${windowReason}`
           });
 
           remainingDuration -= fit;
@@ -409,14 +438,31 @@ export const suggestSchedule = async (
       if (remainingDuration <= 0 && scheduledEndTime) {
           scheduledTasks.push(...taskParts);
           taskCompletionTimes.set(task.id, scheduledEndTime);
+          if (task.isTodoList && task.priority === Priority.HIGH) scheduledHighTodo = true;
           slotsToRemove.sort((a, b) => b - a).forEach(idx => finalWorkSlots.splice(idx, 1));
       } else {
+          unscheduled.push({
+              task,
+              reason: latestConstraint
+                ? `No slot before deadline/window (${latestConstraint.toISOString()})`
+                : 'Insufficient availability'
+          });
           console.warn(`Could not schedule task ${task.title} - insufficient time slots.`);
+      }
+  }
+
+  const warnings: string[] = [];
+  if (scheduledHighTodo) {
+      const slippedProjects = scheduledTasks.filter(t => !t.isTodoList && t.deadline && t.scheduledEnd && isAfter(new Date(t.scheduledEnd), new Date(t.deadline)));
+      if (slippedProjects.length > 0) {
+          warnings.push(`High-priority to-dos pushed ${slippedProjects.length} project task(s) past their deadlines.`);
       }
   }
 
   return {
       scheduled: scheduledTasks,
-      breaks: generatedBreaks
+      breaks: generatedBreaks,
+      unscheduled,
+      warnings
   };
 };
