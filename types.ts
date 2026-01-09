@@ -56,6 +56,7 @@ export interface Task {
   isTodoList?: boolean; // Marked when created via To-Do list builder
   projectId?: string;
   status: TaskStatus;
+  completedAt?: string; // ISO Date string
   description?: string;
   isFixed?: boolean; // If true, it's a hard calendar event
   scheduledStart?: string; // ISO Date string

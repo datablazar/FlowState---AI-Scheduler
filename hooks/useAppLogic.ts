@@ -6,6 +6,7 @@ import { suggestSchedule } from '../utils/scheduler';
 import { useDriftDetection } from './useDriftDetection';
 import { cascadeTaskMove, resolveOverlaps } from '../utils/helpers';
 import { addWeeks, subWeeks, addMonths, subMonths, addMinutes, addDays, startOfDay, isBefore, isSameDay } from 'date-fns';
+import { recordFocusSession, recordNoteSnapshot, recordTaskCompletion, updateBehaviorSnapshot, updateDailySummary } from '../services/memoryService';
 
 export const useAppLogic = () => {
   // --- Initialization with Local Storage ---
@@ -86,6 +87,8 @@ export const useAppLogic = () => {
   const settingsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const statsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const summaryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const behaviorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (tasksTimeoutRef.current) clearTimeout(tasksTimeoutRef.current);
@@ -112,6 +115,7 @@ export const useAppLogic = () => {
       if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
       notesTimeoutRef.current = setTimeout(() => {
           localStorage.setItem('flowstate_notes', sidebarNotes);
+          recordNoteSnapshot(sidebarNotes);
       }, 1000);
   }, [sidebarNotes]);
 
@@ -121,6 +125,20 @@ export const useAppLogic = () => {
           localStorage.setItem('flowstate_stats', JSON.stringify(userStats));
       }, 1000);
   }, [userStats]);
+
+  useEffect(() => {
+      if (summaryTimeoutRef.current) clearTimeout(summaryTimeoutRef.current);
+      summaryTimeoutRef.current = setTimeout(() => {
+          updateDailySummary(tasks, sidebarNotes);
+      }, 1500);
+  }, [tasks, sidebarNotes]);
+
+  useEffect(() => {
+      if (behaviorTimeoutRef.current) clearTimeout(behaviorTimeoutRef.current);
+      behaviorTimeoutRef.current = setTimeout(() => {
+          updateBehaviorSnapshot(tasks);
+      }, 1500);
+  }, [tasks]);
 
 
   // Modals & View State
@@ -275,6 +293,13 @@ export const useAppLogic = () => {
               // Defer velocity update slightly to avoid render loop if called synchronously during render (though it shouldn't be)
               setTimeout(() => recalculateProjectVelocity(task.projectId!, newTasks), 0);
           }
+
+          if (task.sessions?.length) {
+              const existingIds = new Set((exists?.sessions || []).map(session => session.id));
+              task.sessions
+                .filter(session => !existingIds.has(session.id))
+                .forEach(session => recordFocusSession(task, session));
+          }
           
           return newTasks;
       });
@@ -298,6 +323,7 @@ export const useAppLogic = () => {
           isFixed: false,
           sessions: [], // Reset sessions
           actualDurationMinutes: 0,
+          completedAt: undefined,
           subtasks: task.subtasks?.map(s => ({...s, isCompleted: false})) || []
       };
       setTasks(prev => [newTask, ...prev]);
@@ -310,13 +336,14 @@ export const useAppLogic = () => {
         if (!task) return prev;
 
         const newStatus = task.status === TaskStatus.DONE ? TaskStatus.TODO : TaskStatus.DONE;
+        const completedAt = newStatus === TaskStatus.DONE ? new Date().toISOString() : undefined;
         
         if (newStatus === TaskStatus.DONE) {
             awardXP(50); // Award XP for completion
             addToast('success', 'Task completed! +50 XP');
         }
 
-        let newTasks = prev.map(t => t.id === id ? { ...t, status: newStatus } : t);
+        let newTasks = prev.map(t => t.id === id ? { ...t, status: newStatus, completedAt } : t);
 
         // Recurrence Logic: Only trigger when marking AS DONE
         if (newStatus === TaskStatus.DONE && task.recurrence) {
@@ -340,7 +367,8 @@ export const useAppLogic = () => {
                 isFixed: !!task.scheduledStart,
                 sessions: [],
                 actualDurationMinutes: 0,
-                subtasks: task.subtasks?.map(s => ({...s, isCompleted: false})) || [] 
+                subtasks: task.subtasks?.map(s => ({...s, isCompleted: false})) || [],
+                completedAt: undefined,
             };
             newTasks = [...newTasks, nextTask];
         }
@@ -349,9 +377,14 @@ export const useAppLogic = () => {
              setTimeout(() => recalculateProjectVelocity(task.projectId!, newTasks), 0);
         }
 
+        if (newStatus === TaskStatus.DONE) {
+            const projectName = projects.find(project => project.id === task.projectId)?.name;
+            recordTaskCompletion({ ...task, completedAt }, projectName);
+        }
+
         return newTasks;
     });
-  }, [recalculateProjectVelocity]);
+  }, [projects, recalculateProjectVelocity]);
 
   const handleAddProject = useCallback((project: Project) => {
       setProjects(prev => [...prev, project]);
